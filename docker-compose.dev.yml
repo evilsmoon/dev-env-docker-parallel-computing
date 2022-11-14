@@ -1,0 +1,11 @@
+version: '1.0.0'
+services:
+  api:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    stdin_open: true 
+    tty: true 
+    volumes: 
+      - ./:/home/mpi-test
+
