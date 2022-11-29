@@ -1,112 +1,183 @@
-
+#include <vector>
 #include <iostream>
 #include <fstream>
-#include <stdexcept>
-#include <string>
-#include <memory>
 
-#include "random_forest/globals.h"
-#include "random_forest/ArgumentHandler.h"
-#include "random_forest/ForestClassification.h"
-#include "random_forest/ForestRegression.h"
-#include "random_forest/ForestSurvival.h"
-#include "random_forest/ForestProbability.h"
-#include "random_forest/utility.h"
-#include "random_forest/Data.h"
 
 #include "dicom/DicomReader.h"
+#include "svm/svm.h"
 
-using namespace ranger;
+
+
+#define Malloc(type,n) (type *)malloc((n)*sizeof(type))
+
+struct svm_parameter param;             // set by parse_command_line
+struct svm_problem prob;                // set by read_problem
+struct svm_model *model;
+struct svm_node *x_space;
+
 using namespace std;
 
+vector<vector<int> > parseData(int **img, int size, int feat)
+{
+    std::vector<std::vector<int> > data;
 
-
-vector<vector<int>> getDataWithLabels(string labelPath, int **data, int width, int height) {
-    vector<vector<int>> dataWithLabels;
-    ifstream file(labelPath);
-    string line = "";
-    string delimiter = ",";
-    vector<int> labels;
-
-    // Read label values and push to vector
-    while (getline(file, line))
+    for (int i=0; i< size; ++i)
     {
-        size_t pos = 0;
-        string token;
-        while ((pos = line.find(delimiter)) != string::npos) {
-            token = line.substr(0, pos);
-            line.erase(0, pos + delimiter.length());
-            labels.push_back(stoi(token) );
+        std::vector<int> featureSet;
+        for (int j=0; j< feat; ++j)
+        {
+            featureSet.push_back(img[i][j]);
         }
-        labels.push_back(stoi(line));
-    }
-    // Close the File
-    file.close();
 
-    // Create matrix with data and labels
-    for (int i = 0; i < height; ++i) {
-        vector<int> dataset;
-        for (int j = 0; j < width; ++j) {
-            dataset.push_back(data[i][j]);
-        }
-        dataset.push_back(labels[i]);
-        dataWithLabels.push_back(dataset);
+        data.push_back(featureSet);
     }
+    return data;
+}
 
-    return dataWithLabels;
+vector<int> generateLabels(int labelsSize)
+{
+    std::vector<int> labels;
+    for (int i=0; i<labelsSize; ++i)
+    {
+        int lbl = i%4;
+        labels.push_back(lbl);
+    }
+    return labels;
 }
 
 
-int main () {
+
+void saveData (vector<vector<int>> data, const char* filename) {
+    std::ofstream output_file(filename);
+
+    for (const auto &row : data) {
+        for (const auto &val: row) {
+         output_file << val << ",";
+        }
+        output_file << "\n";
+    }
+}
+
+void saveLabels (vector<int> labels) {
+    std::ofstream output_file("labels.csv");
+
+    for (const auto &v: labels) {
+        output_file << v << ",";
+    }
+}
+
+void initProblemNodes(svm_node *x_space, svm_problem prob, vector<vector<int>> data) {
+    //initialize the svm_node vector with input data array as follows:
+    int j=0; //counter to traverse x_space[i];
+    for (int i=0;i < prob.l; ++i)
+    {
+        //set i-th element of prob.x to the address of x_space[j].
+        //elements from x_space[j] to x_space[j+data[i].size] get filled right after next line
+        prob.x[i] = &x_space[j];
+        for (int k=0; k<data[i].size(); ++k, ++j)
+        {
+            x_space[j].index=k+1; //index of value
+            x_space[j].value=data[i][k]; //value
+        }
+        x_space[j].index=-1;//state the end of data vector
+        x_space[j].value=0;
+        j++;
+    }
+}
+
+struct svm_node *createSVMNode(vector<int> points) {
+    struct svm_node *node;
+
+    node = Malloc(struct svm_node, (points.size()+1) * 1);
+    int j = 0;
+
+    for (int i = 0; i < points.size(); ++i) {
+        node[j].index =  i+1;
+        node[j].value = points[i];
+//        cout << node[j].index  << ": " << node[j].value << endl;
+        j++;
+    }
+    node[j].index =  -1;
+    node[j].value = 0;
+
+    return node;
+}
+
+
+
+int main(int argc, char *argv[])
+{
     DicomReader dicomObj("/home/dicom-classifier/data/20586908_6c613a14b80a8591_MG_R_CC_ANON.dcm");
-    int rows = dicomObj.getHeight();
-    int cols = dicomObj.getWidth();
+    int size = dicomObj.getHeight();
+    int elements = dicomObj.getWidth();
 
-//    vector<vector<int>> data = dicomObj.getIntImageMatrix(12);
-    int **data = dicomObj.getImageArray(12);
+    vector<vector<int>> data = parseData(dicomObj.getImageArray(12), size, elements);
+    vector<int> labels = generateLabels(size);
 
-    const char *datafile = "dataset.csv";
-    vector<vector<int>> dwl = getDataWithLabels("/home/dicom-classifier/data/labels.csv", data, cols, rows);
-    dicomObj.saveData(dwl, datafile, " ", true); // Random forest format needs space as delimiter and header
+    vector<int> testIdx = {432, 2240, 860, 678, 1567};
+    vector<int> train_labels;
 
-
-    // Create forest
-    unique_ptr<Forest> forest {};
-    forest = make_unique<ForestClassification>();
-
-    // Config
-    uint mtry = 0;
-    MemoryMode mode = MEM_DOUBLE;
-    string  filename = datafile;
-    string outprefix = "out_file";
-//    std::ofstream logfile { arg_handler.outprefix + ".log" };
-    uint default_seed = 0;
-    string predict_file = ""; // Use to load predict file
-    string split_weights_file = "";
-    vector<std::string> split_vars;
-    string status_var_name = "";
-    bool replacement = false;
-    vector<std::string> cat_vars;
-    bool save_memory = false;
-    string weights_file;
-    bool predall = false;
-    double samplefraction = 0;
-    bool holdout = false;
-    vector<double> reg_factor;
-    bool reg_usedepth = false;
-
-    forest->initCpp("LABEL", mode, filename, mtry, outprefix, DEFAULT_NUM_TREE, &std::cout,
-                    default_seed, DEFAULT_NUM_THREADS,predict_file, DEFAULT_IMPORTANCE_MODE, DEFAULT_MIN_NODE_SIZE_CLASSIFICATION,
-                    split_weights_file, split_vars, status_var_name, replacement, cat_vars, save_memory,
-                    DEFAULT_SPLITRULE, weights_file, predall, samplefraction, DEFAULT_ALPHA,
-                    DEFAULT_MINPROP, holdout, DEFAULT_PREDICTIONTYPE, DEFAULT_NUM_RANDOM_SPLITS,
-                    DEFAULT_MAXDEPTH, reg_factor, reg_usedepth);
-
-    forest->run(true, true);
+    vector<vector<int>> test;
+    for (auto id : testIdx) {
+        test.push_back(data[id]);
+        train_labels.push_back(labels[id]);
+    }
 
 
-    forest->writeOutput();
-    forest->saveToFile();
+    cout<<"data size = "<<data.size()<<endl;
+    cout<<"labels size = "<<labels.size()<<endl;
+
+
+
+//     init problem
+    prob.l = size;
+
+    // @param prob.l = number of labels
+    // @param elements = number of features for each label
+    prob.y = Malloc(double,prob.l); //space for prob.l doubles
+    prob.x = Malloc(struct svm_node *, prob.l); //space for prob.l pointers to struct svm_node
+    x_space = Malloc(struct svm_node, (elements+1) * prob.l); //memory for pairs of index/value//here we need to give some memory to our structures
+
+    //initialize the different lables with an array of labels
+    for (int i=0; i < prob.l; ++i)
+        prob.y[i] = labels[i];
+
+    // Initialize problem nodes with data values
+    initProblemNodes(x_space, prob, data);
+
+    //set all default parameters for param struct
+    param.svm_type = NU_SVC;
+    param.kernel_type = LINEAR;
+
+    param.nu = 0.5;
+    param.cache_size = 1000;
+    param.C = 1;
+    param.eps = 1e-3;
+    param.p = 0.1;
+    param.probability = 0;
+    param.nr_weight = 0;
+    param.weight_label = NULL;
+    param.weight = NULL;
+
+    //try to actually execute it
+    model = svm_train(&prob, &param);
+
+//     svm_set_print_string_function(NULL);
+     cout << "Total classes: " << model->nr_class << endl;
+     cout << model->label[0] << endl;
+     cout << model->label[1] << endl;
+
+     // Predict Labels
+     vector<int> test_result;
+
+     for (int i = 0; i < test.size(); ++i) {
+         struct svm_node *point = createSVMNode(test[i]);
+         int lbl = svm_predict(model, point);
+         test_result.push_back(lbl);
+
+         cout <<  "train: " << train_labels[i] << "| predict: " << lbl << endl;
+     }
+
 
     return 0;
 }
