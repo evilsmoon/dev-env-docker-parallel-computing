@@ -50,23 +50,20 @@ RUN cd /home
 
 WORKDIR /home
 
-RUN git clone https://github.com/waguilars/dicom-classifier.git
+RUN git clone https://github.com/ramirew/dip.git
 
-RUN cd dicom-classifier
+RUN cd dip
 
-WORKDIR /home/dicom-classifier
+WORKDIR /home/dip
 
 RUN sh build.sh
 
 RUN cd
 
-RUN mkdir /home/mpi-test
+RUN mkdir /home/second-order
 
-RUN cd /home/mpi-test
+RUN cd /home/second-order
 
-WORKDIR /home/mpi-test
+WORKDIR /home/second-order
 
-COPY ./test.sh ./
-
-RUN sh test.sh
-
+COPY ./ ./
