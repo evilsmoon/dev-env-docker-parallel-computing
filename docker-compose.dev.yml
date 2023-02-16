@@ -1,4 +1,4 @@
-version: '1.0.0'
+version: '3'
 services:
   api:
     build:
@@ -6,6 +6,10 @@ services:
       dockerfile: ./Dockerfile
     stdin_open: true 
     tty: true 
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
     volumes: 
-      - ./:/home/mpi-test
+      - ./:/home/second-order
 

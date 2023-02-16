@@ -44,26 +44,13 @@ RUN cd cmake-${CMAKE_LINUX_VERSION}
 ENV PATH="$PATH:/opt/cmake/cmake-${CMAKE_LINUX_VERSION}/bin"
 
 
-RUN cd
+RUN cd && cd /home
 
-RUN cd /home
-
-WORKDIR /home
 
 RUN git clone https://github.com/ramirew/dip.git
 
-RUN cd dip
-
-WORKDIR /home/dip
-
-RUN sh build.sh
-
-RUN cd
+RUN cd dip && sh build.sh %% cd 
 
 RUN mkdir /home/second-order
 
-RUN cd /home/second-order
-
 WORKDIR /home/second-order
-
-COPY ./ ./

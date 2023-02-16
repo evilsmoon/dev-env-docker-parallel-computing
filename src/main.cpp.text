@@ -1,0 +1,114 @@
+#include <fstream>
+#include <string.h>
+#include <cstdlib>
+#include <string>
+#include <stdio.h>
+#include <vector>
+#include <iostream>
+#include <cmath>
+#include <chrono>
+#include <sys/resource.h>
+#include <math.h>
+#include <omp.h>
+
+#include "dicom_read/DicomReader.h"
+#include "dcmtk/dcmimgle/dcmimage.h"
+#include "SecondOrder/secondorder.h"
+#include "performance/benchmark.h"
+// #include ""
+
+using namespace std;
+
+int main(int argc, char *argv[])
+{
+    DicomReader dicomObj("images/MasaMicro1.dcm");
+    DicomImage DCM_image("images/MasaMicro1.dcm");
+
+    int depth = DCM_image.getDepth();
+    int width = dicomObj.getWidth();
+    int height = dicomObj.getHeight();
+
+    vector<vector<int>> image = dicomObj.getIntImageMatrix(depth);
+
+    // Medimos el uso de CPU antes de llamar a la función
+    struct rusage usage_before;
+    getrusage(RUSAGE_SELF, &usage_before);
+
+    // Tomamos el tiempo antes de llamar a la función
+    auto start = chrono::high_resolution_clock::now();
+
+    SecondOrder s;
+
+    // double idn = s.IDN_OPM(image);
+    double idn = s.IDN(image);
+
+    // double ido_c4 = s.IDOC4_OPM(image);
+    double ido_c4 = s.IDOC4(image);
+
+    // double inverse_variance = s.InverseVariance_OPM(image);
+    double inverse_variance = s.InverseVariance(image);
+
+    // double local_homogeneity = s.LocalHomogeneity_OPM(image);
+    double local_homogeneity = s.LocalHomogeneity(image);
+
+    // double max_probability = s.MaxProbability_OPM(image);
+    double max_probability = s.MaxProbability(image);
+
+    // double max_intensityroi = s.MaxIntensityROI_OPM(image, 1000, 1000, 2000, 2000);
+    double max_intensityroi = s.MaxIntensityROI(image, 1000, 1000, 2000, 2000);
+
+    // double mean_intensityroi = s.MeanIntensityROI_OPM(image, 1000, 1000, 2000, 2000);
+    double mean_intensityroi = s.MeanIntensityROI(image, 1000, 1000, 2000, 2000);
+
+    // double lre = s.LRE_OPM(image);
+    double lre = s.LRE(image);
+
+    // double mean_variance = s.MeanVariance_OPM(image);
+    double mean_variance = s.MeanVariance(image);
+
+    // Tomamos el tiempo después de llamar a la función
+    auto stop = chrono::high_resolution_clock::now();
+
+    // Calculamos el tiempo de ejecución en milisegundos
+    auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
+
+    // Medimos el uso de CPU después de llamar a la función
+    struct rusage usage_after;
+    getrusage(RUSAGE_SELF, &usage_after);
+
+    long user_time_diff = (usage_after.ru_utime.tv_sec - usage_before.ru_utime.tv_sec) * 1000 + (usage_after.ru_utime.tv_usec - usage_before.ru_utime.tv_usec) / 1000;
+    long system_time_diff = (usage_after.ru_stime.tv_sec - usage_before.ru_stime.tv_sec) * 1000 + (usage_after.ru_stime.tv_usec - usage_before.ru_stime.tv_usec) / 1000;
+    // Calculamos la diferencia de uso de memoria RAM en KB
+    long ram_diff = usage_after.ru_maxrss - usage_before.ru_maxrss;
+
+    printf("Tiempo de ejecución:  %ld \n", duration.count());
+    printf("Uso de CPU (usuario): %ld \n", user_time_diff);
+    printf("Uso de CPU (sistema): %ld \n", system_time_diff);
+    printf("Uso de memoria RAM: %ld KB\n", ram_diff);
+
+    // Abrimos un archivo CSV para escribir los datos
+    ofstream file("results.csv", ios::out | ios::trunc);
+
+    // Escribimos las cabeceras de las columnas
+    file << "tiempo_ejecucion,uso_cpu_usuario, uso_cpu_sistema, uso_memoria_ram" << std::endl;
+
+    // Escribimos los datos en una línea
+    file << duration.count() << ", " << user_time_diff << ", " << system_time_diff << ", " << ram_diff << endl;
+
+    // Cerramos el archivo
+    file.close();
+
+    printf("\nDatos guardados en el archivo results.csv\n");
+
+    printf("\nIDN: %f " , idn );
+    printf("\nIDOC4: %f " , ido_c4 );
+    printf("\nInverseVariance: %f " , inverse_variance );
+    printf("\nLocalHomogeneity: %f " , local_homogeneity );
+    printf("\nMaxProbability: %f " , max_probability );
+    printf("\nMaxIntensityROI: %f " , max_intensityroi );
+    printf("\nMeanIntensityROI: %f " , mean_intensityroi );
+    printf("\nLRE: %f " , lre );
+    printf("\nMeanVariance: %f \n" , mean_variance );
+
+    return 0;
+}
